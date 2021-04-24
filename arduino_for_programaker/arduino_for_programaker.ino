@@ -12,6 +12,8 @@
 
 #define DEVICE_ESP8266
 #include "setup_wifi_8266.h"
+#include <NTPClient.h>
+#include <WiFiUdp.h>
 
 void(* resetFunc) (void) = 0; // declare reset function at address 0
 
@@ -132,13 +134,17 @@ int count = 0;
 int to_go = NUM;
 int last_sound = 0; // As is mapped from several readings, it has to be saved
 
+// Define NTP Client to get time
+WiFiUDP ntpUDP;
+const long utcOffsetInSeconds = 0; // We consider timezone=UTC+0
+NTPClient timeClient(ntpUDP, "pool.ntp.org", utcOffsetInSeconds);
 
 void setup() {
-     Serial.begin(9600);
-     Serial.setDebugOutput(true);
+    Serial.begin(9600);
+    Serial.setDebugOutput(true);
 
 #ifdef GDBDEBUG
-     gdbstub_init();
+    gdbstub_init();
 #endif
 
     // Connect wifi
@@ -150,9 +156,12 @@ void setup() {
       fail();
     }
 
+
 #ifdef GDBDEBUG
     delay(5000);
 #endif
+
+    timeClient.begin();
 
     connect();
 }
@@ -163,6 +172,18 @@ void connect() {
     if (webSocket != NULL) {
         delete webSocket;
     }
+
+    timeClient.update();
+
+    struct timeval realtime;
+    realtime.tv_sec = timeClient.getEpochTime();
+    realtime.tv_usec = 0;
+    settimeofday(&realtime, NULL);
+
+    time_t t = time(NULL);
+    struct tm tm = *localtime(&t);
+    Serial.printf("=> Current time: %i/%i/%i %i:%i:%i\n", tm.tm_year + 1900,
+                  tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
 
     webSocket = new WebSocketsClient();
 #ifdef USE_SSL
